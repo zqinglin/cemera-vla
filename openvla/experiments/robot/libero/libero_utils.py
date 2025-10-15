@@ -5,7 +5,7 @@ import os
 
 import imageio
 import numpy as np
-import tensorflow as tf
+from PIL import Image
 from libero.libero import get_libero_path
 from libero.libero.envs import OffScreenRenderEnv
 
@@ -38,13 +38,13 @@ def resize_image(img, resize_size):
                     the same resizing scheme used in the Octo dataloader, which OpenVLA uses for training.
     """
     assert isinstance(resize_size, tuple)
-    # Resize to image size expected by model
-    img = tf.image.encode_jpeg(img)  # Encode as JPEG, as done in RLDS dataset builder
-    img = tf.io.decode_image(img, expand_animations=False, dtype=tf.uint8)  # Immediately decode back
-    img = tf.image.resize(img, resize_size, method="lanczos3", antialias=True)
-    img = tf.cast(tf.clip_by_value(tf.round(img), 0, 255), tf.uint8)
-    img = img.numpy()
-    return img
+    # Resize to image size expected by model (via PIL)
+    pil_img = Image.fromarray(img)
+    pil_img = pil_img.resize(resize_size, resample=Image.LANCZOS)
+    out = np.asarray(pil_img)
+    if out.dtype != np.uint8:
+        out = np.clip(np.rint(out), 0, 255).astype(np.uint8)
+    return out
 
 
 def get_libero_image(obs, resize_size):
