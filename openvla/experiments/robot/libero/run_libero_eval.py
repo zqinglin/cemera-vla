@@ -195,8 +195,8 @@ def eval_libero(cfg: GenerateConfig) -> None:
                         t += 1
                         continue
 
-            # Get preprocessed image (selected camera)
-            img = get_libero_image(obs, resize_size, camera_name=cfg.camera_name)
+                    # Get preprocessed image (selected camera)
+                    img = get_libero_image(obs, resize_size, camera_name=cfg.camera_name)
 
                     # Save preprocessed image for replay video
                     replay_images.append(img)
