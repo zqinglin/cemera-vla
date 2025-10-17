@@ -72,6 +72,9 @@ class GenerateConfig:
     num_steps_wait: int = 10                         # Number of steps to wait for objects to stabilize in sim
     num_trials_per_task: int = 50                    # Number of rollouts per task
 
+    # Camera options
+    camera_name: str = "agentview"                   # Camera to render from (e.g., 'agentview', 'robot0_eye_in_hand')
+
     #################################################################################################################
     # Utils
     #################################################################################################################
@@ -192,8 +195,8 @@ def eval_libero(cfg: GenerateConfig) -> None:
                         t += 1
                         continue
 
-                    # Get preprocessed image
-                    img = get_libero_image(obs, resize_size)
+            # Get preprocessed image (selected camera)
+            img = get_libero_image(obs, resize_size, camera_name=cfg.camera_name)
 
                     # Save preprocessed image for replay video
                     replay_images.append(img)

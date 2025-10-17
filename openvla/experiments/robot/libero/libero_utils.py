@@ -47,12 +47,21 @@ def resize_image(img, resize_size):
     return out
 
 
-def get_libero_image(obs, resize_size):
-    """Extracts image from observations and preprocesses it."""
+def get_libero_image(obs, resize_size, camera_name: str = "agentview"):
+    """Extracts image for a given camera from observations and preprocesses it.
+
+    :param obs: observation dict returned from the environment
+    :param resize_size: int or tuple for resizing
+    :param camera_name: camera key prefix in obs (e.g., 'agentview', 'robot0_eye_in_hand')
+    """
     assert isinstance(resize_size, int) or isinstance(resize_size, tuple)
     if isinstance(resize_size, int):
         resize_size = (resize_size, resize_size)
-    img = obs["agentview_image"]
+    # Build camera image key; fall back to agentview if missing
+    camera_key = f"{camera_name}_image"
+    if camera_key not in obs:
+        camera_key = "agentview_image"
+    img = obs[camera_key]
     img = img[::-1, ::-1]  # IMPORTANT: rotate 180 degrees to match train preprocessing
     img = resize_image(img, resize_size)
     return img
