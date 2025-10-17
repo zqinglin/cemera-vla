@@ -11,6 +11,7 @@ Usage:
         --pretrained_checkpoint <CHECKPOINT_PATH> \
         --task_suite_name [ libero_spatial | libero_object | libero_goal | libero_10 | libero_90 ] \
         --center_crop [ True | False ] \
+        --adapter_path <OPTIONAL PATH TO TRAINED ADAPTER STATE_DICT> \
         --run_id_note <OPTIONAL TAG TO INSERT INTO RUN ID FOR LOGGING> \
         --use_wandb [ True | False ] \
         --wandb_project <PROJECT> \
@@ -19,6 +20,7 @@ Usage:
 
 import os
 import sys
+import torch
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
@@ -49,6 +51,10 @@ from experiments.robot.robot_utils import (
     normalize_gripper_action,
     set_seed_everywhere,
 )
+from experiments.robot.libero.adapter import (
+    ShallowWideTransformerAdapter,
+    AdapterConfig,
+)
 
 
 @dataclass
@@ -74,6 +80,9 @@ class GenerateConfig:
 
     # Camera options
     camera_name: str = "agentview"                   # Camera to render from (e.g., 'agentview', 'robot0_eye_in_hand')
+
+    # Optional adapter injection
+    adapter_path: Optional[str] = None               # If provided, load adapter and wrap vision backbone
 
     #################################################################################################################
     # Utils
@@ -118,6 +127,37 @@ def eval_libero(cfg: GenerateConfig) -> None:
     processor = None
     if cfg.model_family == "openvla":
         processor = get_processor(cfg)
+
+    # Optionally load and inject Adapter in front of projector
+    if cfg.adapter_path is not None and len(str(cfg.adapter_path)) > 0:
+        # Infer device / dtype from model
+        param = next(model.parameters())
+        device = param.device
+        dtype = param.dtype
+
+        # Adapter hyperparameters (from measured vision shape)
+        adapter_cfg = AdapterConfig(
+            num_patches=256,
+            token_dim=2176,
+            adapter_width=2688,
+            nhead=21,
+            num_layers=2,
+            dropout=0.0,
+        )
+        adapter = ShallowWideTransformerAdapter(adapter_cfg).to(device=device, dtype=dtype).eval()
+        state = torch.load(cfg.adapter_path, map_location=device)
+        adapter.load_state_dict(state)
+
+        # Wrap the vision backbone forward pass
+        _orig_forward = model.vision_backbone.forward
+
+        def _wrapped_forward(pixel_values: torch.Tensor) -> torch.Tensor:
+            with torch.no_grad():
+                feat = _orig_forward(pixel_values)
+                feat = adapter(feat)
+                return feat
+
+        model.vision_backbone.forward = _wrapped_forward
 
     # Initialize local logging
     run_id = f"EVAL-{cfg.task_suite_name}-{cfg.model_family}-{DATE_TIME}"
