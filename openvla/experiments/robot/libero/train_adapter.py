@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Tuple
 
 import argparse
+import os
 import torch
 import torch.nn as nn
 import torch.utils.data as data
@@ -134,8 +135,33 @@ def main(cfg: TrainConfig) -> None:
     )
     dtype = torch.bfloat16 if device.type == "cuda" else torch.float32
 
+    # Resolve processor source (fallback to HF repo if local dir lacks processor files)
+    def _resolve_processor_source(ckpt: str) -> str:
+        if os.path.isdir(ckpt):
+            expected = [
+                "processor_config.json",
+                "preprocessor_config.json",
+                "tokenizer_config.json",
+                "vocab.json",
+                "merges.txt",
+            ]
+            if not any(os.path.isfile(os.path.join(ckpt, f)) for f in expected):
+                base = os.path.basename(os.path.abspath(ckpt)).lower()
+                if "openvla-7b-finetuned-libero-spatial" in base:
+                    return "openvla/openvla-7b-finetuned-libero-spatial"
+                if "openvla-7b-finetuned-libero-object" in base:
+                    return "openvla/openvla-7b-finetuned-libero-object"
+                if "openvla-7b-finetuned-libero-goal" in base:
+                    return "openvla/openvla-7b-finetuned-libero-goal"
+                if "openvla-7b-finetuned-libero-10" in base:
+                    return "openvla/openvla-7b-finetuned-libero-10"
+                if "openvla-7b" in base:
+                    return "openvla/openvla-7b"
+        return ckpt
+
+    processor_src = _resolve_processor_source(cfg.pretrained_checkpoint)
     # Load processor and VLA (frozen)
-    processor = AutoProcessor.from_pretrained(cfg.pretrained_checkpoint, trust_remote_code=True)
+    processor = AutoProcessor.from_pretrained(processor_src, trust_remote_code=True)
     vla = AutoModelForVision2Seq.from_pretrained(
         cfg.pretrained_checkpoint,
         attn_implementation="flash_attention_2",
