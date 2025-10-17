@@ -74,7 +74,41 @@ def get_vla(cfg):
 
 def get_processor(cfg):
     """Get VLA model's Hugging Face processor."""
-    processor = AutoProcessor.from_pretrained(cfg.pretrained_checkpoint, trust_remote_code=True)
+    checkpoint_path = cfg.pretrained_checkpoint
+
+    # Heuristic: if a local dir is passed but it doesn't contain processor/tokenizer configs,
+    # fall back to the matching HF repo id to load the processor.
+    repo_fallback = None
+    try:
+        if os.path.isdir(checkpoint_path):
+            expected_files = [
+                "processor_config.json",
+                "preprocessor_config.json",
+                "tokenizer_config.json",
+                "vocab.json",
+                "merges.txt",
+            ]
+            has_processor_files = any(
+                os.path.isfile(os.path.join(checkpoint_path, f)) for f in expected_files
+            )
+            if not has_processor_files:
+                base = os.path.basename(os.path.abspath(checkpoint_path)).lower()
+                if "openvla-7b-finetuned-libero-spatial" in base:
+                    repo_fallback = "openvla/openvla-7b-finetuned-libero-spatial"
+                elif "openvla-7b-finetuned-libero-object" in base:
+                    repo_fallback = "openvla/openvla-7b-finetuned-libero-object"
+                elif "openvla-7b-finetuned-libero-goal" in base:
+                    repo_fallback = "openvla/openvla-7b-finetuned-libero-goal"
+                elif "openvla-7b-finetuned-libero-10" in base:
+                    repo_fallback = "openvla/openvla-7b-finetuned-libero-10"
+                elif "openvla-7b" in base:
+                    repo_fallback = "openvla/openvla-7b"
+    except Exception:
+        # If any path logic fails, just let HF handle it below
+        pass
+
+    source = repo_fallback if repo_fallback is not None else checkpoint_path
+    processor = AutoProcessor.from_pretrained(source, trust_remote_code=True)
     return processor
 
 
