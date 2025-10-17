@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Tuple
 
-import draccus
+import argparse
 import torch
 import torch.nn as nn
 import torch.utils.data as data
@@ -94,7 +94,35 @@ def set_seed_all(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
-@draccus.wrap()
+def parse_args() -> TrainConfig:
+    p = argparse.ArgumentParser()
+    p.add_argument("--pretrained_checkpoint", type=str, default="hf_models/openvla-openvla-7b-finetuned-libero-spatial")
+    p.add_argument("--data_root", type=str, default="./paired_data")
+    p.add_argument("--img_size", type=int, default=224)
+    p.add_argument("--epochs", type=int, default=3)
+    p.add_argument("--batch_size", type=int, default=8)
+    p.add_argument("--num_workers", type=int, default=4)
+    p.add_argument("--lr", type=float, default=1e-4)
+    p.add_argument("--weight_decay", type=float, default=1e-4)
+    p.add_argument("--device", type=str, default="auto")
+    p.add_argument("--out_dir", type=str, default="./adapter_ckpts")
+    p.add_argument("--seed", type=int, default=7)
+    a = p.parse_args()
+    return TrainConfig(
+        pretrained_checkpoint=a.pretrained_checkpoint,
+        data_root=a.data_root,
+        img_size=a.img_size,
+        epochs=a.epochs,
+        batch_size=a.batch_size,
+        num_workers=a.num_workers,
+        lr=a.lr,
+        weight_decay=a.weight_decay,
+        device=a.device,
+        out_dir=a.out_dir,
+        seed=a.seed,
+    )
+
+
 def main(cfg: TrainConfig) -> None:
     set_seed_all(cfg.seed)
 
@@ -210,6 +238,6 @@ def main(cfg: TrainConfig) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(parse_args())
 
 
