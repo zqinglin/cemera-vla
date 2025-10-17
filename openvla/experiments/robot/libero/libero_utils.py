@@ -60,7 +60,25 @@ def get_libero_image(obs, resize_size, camera_name: str = "agentview"):
     # Build camera image key; fall back to agentview if missing
     camera_key = f"{camera_name}_image"
     if camera_key not in obs:
-        camera_key = "agentview_image"
+        # Special alias: 'view_B' resolves to a fixed side/front/top camera if available
+        if camera_name == "view_B":
+            # Priority list of likely fixed cameras in LIBERO
+            preferred = [
+                "sideview_image",
+                "leftview_image",
+                "rightview_image",
+                "frontview_image",
+                "topview_image",
+                "birdview_image",
+                "overhead_image",
+            ]
+            candidates = [k for k in preferred if k in obs]
+            if candidates:
+                camera_key = candidates[0]
+            else:
+                camera_key = "agentview_image"
+        else:
+            camera_key = "agentview_image"
     img = obs[camera_key]
     img = img[::-1, ::-1]  # IMPORTANT: rotate 180 degrees to match train preprocessing
     img = resize_image(img, resize_size)
