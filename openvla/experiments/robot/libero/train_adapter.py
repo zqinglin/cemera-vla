@@ -36,7 +36,7 @@ import torch.nn as nn
 import torch.utils.data as data
 from PIL import Image
 from torchvision import transforms
-from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoProcessor, AutoImageProcessor, AutoModelForVision2Seq
 
 from experiments.robot.libero.adapter import ShallowWideTransformerAdapter, AdapterConfig
 
@@ -160,8 +160,8 @@ def main(cfg: TrainConfig) -> None:
         return ckpt
 
     processor_src = _resolve_processor_source(cfg.pretrained_checkpoint)
-    # Load processor and VLA (frozen)
-    processor = AutoProcessor.from_pretrained(processor_src, trust_remote_code=True)
+    # Load image processor (for images-only) and VLA (frozen)
+    image_processor = AutoImageProcessor.from_pretrained(processor_src, trust_remote_code=True)
     vla = AutoModelForVision2Seq.from_pretrained(
         cfg.pretrained_checkpoint,
         attn_implementation="flash_attention_2",
@@ -209,7 +209,7 @@ def main(cfg: TrainConfig) -> None:
             # processor expects PIL Image list or already batched tensors depending on custom class
             # We convert back to list of PIL for robust path
             imgs = [transforms.ToPILImage()(img.cpu().to(torch.float32)) for img in img_batch]
-            proc = processor(images=imgs, return_tensors="pt")
+            proc = image_processor(images=imgs, return_tensors="pt")
             pixel_values = proc["pixel_values"].to(device, dtype=dtype)
             feat = vla.vision_backbone(pixel_values)  # (B, 256, 2176)
         return feat
