@@ -182,7 +182,7 @@ def main(cfg: TrainConfig) -> None:
         num_layers=2,
         dropout=0.0,
     )
-    adapter = ShallowWideTransformerAdapter(adapter_cfg).to(device)
+    adapter = ShallowWideTransformerAdapter(adapter_cfg).to(device=device, dtype=dtype)
 
     # Dataset & Loader
     tfm = transforms.Compose(
