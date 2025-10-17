@@ -6,6 +6,7 @@ import os
 import imageio
 import numpy as np
 from PIL import Image
+import cv2
 from libero.libero import get_libero_path
 from libero.libero.envs import OffScreenRenderEnv
 
@@ -81,6 +82,21 @@ def get_libero_image(obs, resize_size, camera_name: str = "agentview"):
             camera_key = "agentview_image"
     img = obs[camera_key]
     img = img[::-1, ::-1]  # IMPORTANT: rotate 180 degrees to match train preprocessing
+    # Synthetic static view_B: apply a deterministic perspective warp to simulate a fixed side/front camera
+    if camera_name == "view_B":
+        h, w = img.shape[:2]
+        src = np.float32([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]])
+        dst = np.float32([
+            [0.15 * w, 0.05 * h],
+            [0.95 * w, 0.00 * h],
+            [0.85 * w, 0.95 * h],
+            [0.05 * w, 0.10 * h],
+        ])
+        M = cv2.getPerspectiveTransform(src, dst)
+        img = cv2.warpPerspective(
+            img, M, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE
+        )
+
     img = resize_image(img, resize_size)
     return img
 
