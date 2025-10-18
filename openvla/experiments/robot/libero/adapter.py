@@ -112,6 +112,30 @@ class ShallowWideTransformerAdapter(nn.Module):
         return y
 
 
+class FeatureDiscriminator(nn.Module):
+    """Per-token discriminator over (B, N, D) sequences.
+
+    Applies a small MLP to each token independently and outputs (B, N, 1) sigmoid scores.
+    """
+
+    def __init__(self, token_dim: int = 2176) -> None:
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(token_dim, 1024),
+            nn.ReLU(inplace=True),
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x: (B, N, D) -> (B*N, D)
+        b, n, d = x.shape
+        x_flat = x.reshape(b * n, d)
+        y = self.mlp(x_flat)  # (B*N, 1)
+        return y.view(b, n, 1)
+
 if __name__ == "__main__":
     torch.manual_seed(7)
     device = torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")

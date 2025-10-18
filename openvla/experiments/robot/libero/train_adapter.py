@@ -38,7 +38,7 @@ from PIL import Image
 from torchvision import transforms
 from transformers import AutoProcessor, AutoImageProcessor, AutoModelForVision2Seq
 
-from experiments.robot.libero.adapter import ShallowWideTransformerAdapter, AdapterConfig
+from experiments.robot.libero.adapter import ShallowWideTransformerAdapter, AdapterConfig, FeatureDiscriminator
 
 
 @dataclass
@@ -212,8 +212,16 @@ def main(cfg: TrainConfig) -> None:
         )
 
     # Optimizer & Loss
-    optimizer = torch.optim.AdamW(adapter.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    criterion = nn.MSELoss()
+    # Optimizers and losses for GAN + MSE
+    optimizer_G = torch.optim.AdamW(adapter.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    discriminator = FeatureDiscriminator(token_dim=adapter_cfg.token_dim).to(device=device, dtype=dtype)
+    optimizer_D = torch.optim.AdamW(discriminator.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    criterion_mse = nn.MSELoss()
+    criterion_bce = nn.BCELoss()
+
+    # GAN loss weights
+    lambda_gan = 1.0
+    lambda_mse = 100.0
 
     # Helper: feature extractor using frozen VLA
     def extract_feats(img_batch: torch.Tensor) -> torch.Tensor:
@@ -244,12 +252,37 @@ def main(cfg: TrainConfig) -> None:
                 f_target = extract_feats(img_a)  # from view_A
                 f_source = extract_feats(img_c)  # from view_C
 
-            pred = adapter(f_source)
-            loss = criterion(pred, f_target)
+            # --------------------
+            # (A) Train Discriminator
+            # --------------------
+            discriminator.train()
+            optimizer_D.zero_grad(set_to_none=True)
+            with torch.no_grad():
+                f_fake_detached = adapter(f_source).detach()
+            # Real labels = 1, Fake labels = 0 (broadcast to (B,N,1))
+            real_logits = discriminator(f_target)
+            fake_logits = discriminator(f_fake_detached)
+            real_labels = torch.ones_like(real_logits, dtype=real_logits.dtype, device=real_logits.device)
+            fake_labels = torch.zeros_like(fake_logits, dtype=fake_logits.dtype, device=fake_logits.device)
+            loss_D_real = criterion_bce(real_logits, real_labels)
+            loss_D_fake = criterion_bce(fake_logits, fake_labels)
+            loss_D = (loss_D_real + loss_D_fake) * 0.5
+            loss_D.backward()
+            optimizer_D.step()
 
-            optimizer.zero_grad(set_to_none=True)
+            # --------------------
+            # (B) Train Generator (Adapter)
+            # --------------------
+            adapter.train()
+            optimizer_G.zero_grad(set_to_none=True)
+            f_fake = adapter(f_source)
+            fake_logits_for_G = discriminator(f_fake)  # judge fake as real
+            real_labels_for_G = torch.ones_like(fake_logits_for_G, dtype=fake_logits_for_G.dtype, device=fake_logits_for_G.device)
+            loss_G_gan = criterion_bce(fake_logits_for_G, real_labels_for_G)
+            loss_G_mse = criterion_mse(f_fake, f_target)
+            loss = lambda_gan * loss_G_gan + lambda_mse * loss_G_mse
             loss.backward()
-            optimizer.step()
+            optimizer_G.step()
 
             running += loss.item()
             global_step += 1
@@ -282,7 +315,7 @@ def main(cfg: TrainConfig) -> None:
                     f_target = extract_feats(img_a)
                     f_source = extract_feats(img_c)
                     pred = adapter(f_source)
-                    vloss = criterion(pred, f_target).item()
+                    vloss = criterion_mse(pred, f_target).item()
                     val_running += vloss
                     val_count += 1
             val_avg = val_running / max(1, val_count)
