@@ -62,6 +62,8 @@ class TrainConfig:
     device: str = "auto"  # "auto" | "cuda:0" | "cpu"
     out_dir: str = "./adapter_ckpts"
     seed: int = 7
+    # Adapter depth
+    adapter_depth: int = 8
 
 
 class PairedImageDataset(data.Dataset):
@@ -110,6 +112,7 @@ def parse_args() -> TrainConfig:
     p.add_argument("--device", type=str, default="auto")
     p.add_argument("--out_dir", type=str, default="./adapter_ckpts")
     p.add_argument("--seed", type=int, default=7)
+    p.add_argument("--adapter_depth", type=int, default=8)
     a = p.parse_args()
     return TrainConfig(
         pretrained_checkpoint=a.pretrained_checkpoint,
@@ -123,6 +126,7 @@ def parse_args() -> TrainConfig:
         device=a.device,
         out_dir=a.out_dir,
         seed=a.seed,
+        adapter_depth=a.adapter_depth,
         val_root=a.val_root,
     )
 
@@ -182,7 +186,7 @@ def main(cfg: TrainConfig) -> None:
         token_dim=2176,
         adapter_width=2688,
         nhead=21,
-        num_layers=2,
+        num_layers=cfg.adapter_depth,
         dropout=0.0,
     )
     adapter = ShallowWideTransformerAdapter(adapter_cfg).to(device=device, dtype=dtype)
