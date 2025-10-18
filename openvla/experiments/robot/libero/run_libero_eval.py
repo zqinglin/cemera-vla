@@ -83,6 +83,7 @@ class GenerateConfig:
 
     # Optional adapter injection
     adapter_path: Optional[str] = None               # If provided, load adapter and wrap vision backbone
+    adapter_depth: int = 8                           # Num transformer layers in adapter (must match checkpoint)
 
     #################################################################################################################
     # Utils
@@ -146,7 +147,7 @@ def eval_libero(cfg: GenerateConfig) -> None:
         )
         adapter = ShallowWideTransformerAdapter(adapter_cfg).to(device=device, dtype=dtype).eval()
         state = torch.load(cfg.adapter_path, map_location=device)
-        adapter.load_state_dict(state)
+        adapter.load_state_dict(state, strict=True)
 
         # Wrap the vision backbone forward pass
         _orig_forward = model.vision_backbone.forward
