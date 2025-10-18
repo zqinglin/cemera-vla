@@ -48,6 +48,7 @@ class TrainConfig:
 
     # Data
     data_root: str = "./paired_data"
+    val_root: str = ""
     img_size: int = 224
     epochs: int = 3
     batch_size: int = 8
@@ -99,6 +100,7 @@ def parse_args() -> TrainConfig:
     p = argparse.ArgumentParser()
     p.add_argument("--pretrained_checkpoint", type=str, default="hf_models/openvla-openvla-7b-finetuned-libero-spatial")
     p.add_argument("--data_root", type=str, default="./paired_data")
+    p.add_argument("--val_root", type=str, default="")
     p.add_argument("--img_size", type=int, default=224)
     p.add_argument("--epochs", type=int, default=3)
     p.add_argument("--batch_size", type=int, default=8)
@@ -121,6 +123,7 @@ def parse_args() -> TrainConfig:
         device=a.device,
         out_dir=a.out_dir,
         seed=a.seed,
+        val_root=a.val_root,
     )
 
 
@@ -197,6 +200,13 @@ def main(cfg: TrainConfig) -> None:
         ds, batch_size=cfg.batch_size, shuffle=True, num_workers=cfg.num_workers, pin_memory=(device.type == "cuda")
     )
 
+    val_loader = None
+    if cfg.val_root and Path(cfg.val_root).exists():
+        ds_val = PairedImageDataset(cfg.val_root, tfm)
+        val_loader = data.DataLoader(
+            ds_val, batch_size=cfg.batch_size, shuffle=False, num_workers=cfg.num_workers, pin_memory=(device.type == "cuda")
+        )
+
     # Optimizer & Loss
     optimizer = torch.optim.AdamW(adapter.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     criterion = nn.MSELoss()
@@ -256,6 +266,23 @@ def main(cfg: TrainConfig) -> None:
             best_path = Path(cfg.out_dir) / "adapter_best.pth"
             torch.save(adapter.state_dict(), best_path)
             print(f"Saved best adapter to {best_path}")
+
+        # Validation pass
+        if val_loader is not None:
+            adapter.eval()
+            val_running, val_count = 0.0, 0
+            with torch.no_grad():
+                for img_a, img_c in val_loader:
+                    img_a = img_a.to(device)
+                    img_c = img_c.to(device)
+                    f_target = extract_feats(img_a)
+                    f_source = extract_feats(img_c)
+                    pred = adapter(f_source)
+                    vloss = criterion(pred, f_target).item()
+                    val_running += vloss
+                    val_count += 1
+            val_avg = val_running / max(1, val_count)
+            print(f"epoch {epoch+1} val_loss {val_avg:.6f}")
 
     # Final save
     final_path = Path(cfg.out_dir) / "adapter_final.pth"
