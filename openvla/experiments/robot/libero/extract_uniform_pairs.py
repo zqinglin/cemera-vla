@@ -76,7 +76,10 @@ def main() -> None:
 
     out_root = Path(cfg.out_dir); out_root.mkdir(parents=True, exist_ok=True)
     task_suite = benchmark.get_benchmark_dict()[cfg.task_suite_name]()
-    resize_size = get_image_resize_size(type("C", (), {"task_suite_name": cfg.task_suite_name}))
+    # Ensure config includes model_family for resize helper
+    resize_size = get_image_resize_size(
+        type("C", (), {"task_suite_name": cfg.task_suite_name, "model_family": "openvla"})
+    )
 
     saved = 0
     for task_id in range(min(cfg.num_examples, task_suite.n_tasks)):
