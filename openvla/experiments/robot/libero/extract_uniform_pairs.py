@@ -127,8 +127,20 @@ def main() -> None:
                     unnorm_key = next(iter(model.norm_stats.keys()))
 
             action = get_action(
-                type("C", (), {"model_family":"openvla", "unnorm_key": unnorm_key, "center_crop":cfg.center_crop}),
-                model, o, task_desc, processor=processor
+                type(
+                    "C",
+                    (),
+                    {
+                        "model_family": "openvla",
+                        "pretrained_checkpoint": cfg.pretrained_checkpoint,
+                        "unnorm_key": unnorm_key,
+                        "center_crop": cfg.center_crop,
+                    },
+                ),
+                model,
+                o,
+                task_desc,
+                processor=processor,
             )
             action = normalize_gripper_action(action, binarize=True)
             action = invert_gripper_action(action)
