@@ -12,6 +12,9 @@ Usage:
         --task_suite_name [ libero_spatial | libero_object | libero_goal | libero_10 | libero_90 ] \
         --center_crop [ True | False ] \
         --adapter_path <OPTIONAL PATH TO TRAINED ADAPTER STATE_DICT> \
+        --save_pool [ True | False ] \
+        --pool_dir <DIR TO SAVE TRAJECTORY POOL> \
+        --pool_cameras <comma-separated camera names e.g., agentview,frontview> \
         --run_id_note <OPTIONAL TAG TO INSERT INTO RUN ID FOR LOGGING> \
         --use_wandb [ True | False ] \
         --wandb_project <PROJECT> \
@@ -51,6 +54,7 @@ from experiments.robot.robot_utils import (
     normalize_gripper_action,
     set_seed_everywhere,
 )
+from imageio import imwrite
 from experiments.robot.libero.adapter import (
     ShallowWideTransformerAdapter,
     AdapterConfig,
@@ -84,6 +88,11 @@ class GenerateConfig:
     # Optional adapter injection
     adapter_path: Optional[str] = None               # If provided, load adapter and wrap vision backbone
     adapter_depth: int = 8                           # Num transformer layers in adapter (must match checkpoint)
+
+    # Optional trajectory pool saving
+    save_pool: bool = False                          # Save per-step frames to a pool
+    pool_dir: Optional[str] = None                   # Root directory for saved frames
+    pool_cameras: str = "agentview,frontview"        # Comma-separated camera names to save
 
     #################################################################################################################
     # Utils
@@ -238,6 +247,18 @@ def eval_libero(cfg: GenerateConfig) -> None:
 
                     # Get preprocessed image (selected camera)
                     img = get_libero_image(obs, resize_size, camera_name=cfg.camera_name)
+
+                    # [Optional] Save frames to pool for specified cameras
+                    if cfg.save_pool:
+                        cameras = [c.strip() for c in cfg.pool_cameras.split(",") if c.strip()]
+                        # Build pool path: pool_dir/task_{id}/episode_{ep}/cam_{name}/frame_{t:05d}.png
+                        assert cfg.pool_dir is not None, "pool_dir must be set when save_pool is True"
+                        base = Path(cfg.pool_dir) / f"task_{task_id:02d}" / f"episode_{episode_idx:03d}"
+                        for cam in cameras:
+                            img_cam = get_libero_image(obs, resize_size, camera_name=cam)
+                            cam_dir = base / f"cam_{cam}"
+                            cam_dir.mkdir(parents=True, exist_ok=True)
+                            imwrite(cam_dir / f"frame_{t:05d}.png", img_cam)
 
                     # Save preprocessed image for replay video
                     replay_images.append(img)
