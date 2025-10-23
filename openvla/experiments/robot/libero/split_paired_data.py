@@ -40,9 +40,54 @@ def parse_args():
     return p.parse_args()
 
 
-def ensure_dirs(base: Path):
-    (base / "view_A").mkdir(parents=True, exist_ok=True)
-    (base / "view_C").mkdir(parents=True, exist_ok=True)
+def ensure_dirs(base: Path, task_rel: str | None = None):
+    if task_rel:
+        (base / task_rel / "view_A").mkdir(parents=True, exist_ok=True)
+        (base / task_rel / "view_C").mkdir(parents=True, exist_ok=True)
+    else:
+        (base / "view_A").mkdir(parents=True, exist_ok=True)
+        (base / "view_C").mkdir(parents=True, exist_ok=True)
+
+
+def list_pairs(src: Path):
+    """Return list of (task_rel, filename) pairs and a resolver to src paths.
+
+    Supports two layouts:
+      flat:  src/view_A/*.png, src/view_C/*.png
+      nested: src/task_xx/view_A/*.png, src/task_xx/view_C/*.png
+    """
+    flat_a = src / "view_A"
+    flat_c = src / "view_C"
+    items: list[tuple[str, str]] = []
+
+    if flat_a.is_dir() and flat_c.is_dir():
+        files_a = sorted(flat_a.glob("*.png"))
+        files_c = sorted(flat_c.glob("*.png"))
+        assert [f.name for f in files_a] == [f.name for f in files_c], "A/C pairs must match"
+        items = [("", f.name) for f in files_a]
+
+        def resolver(task_rel: str, name: str):
+            return flat_a / name, flat_c / name
+
+        return items, resolver
+
+    # nested
+    items = []
+    task_dirs = [d for d in src.iterdir() if d.is_dir()]
+    def resolver(task_rel: str, name: str):
+        return src / task_rel / "view_A" / name, src / task_rel / "view_C" / name
+
+    for td in task_dirs:
+        a_dir = td / "view_A"
+        c_dir = td / "view_C"
+        if not (a_dir.is_dir() and c_dir.is_dir()):
+            continue
+        files_a = sorted(a_dir.glob("*.png"))
+        files_c = sorted(c_dir.glob("*.png"))
+        assert [f.name for f in files_a] == [f.name for f in files_c], f"A/C mismatch in {td.name}"
+        items.extend([(td.name, f.name) for f in files_a])
+
+    return items, resolver
 
 
 def main():
@@ -51,33 +96,37 @@ def main():
     dst_train = Path(a.dst_train)
     dst_val = Path(a.dst_val)
 
-    ensure_dirs(dst_train)
-    ensure_dirs(dst_val)
+    items, resolve = list_pairs(src)
+    n = len(items)
+    if n == 0:
+        print({"total": 0, "train": 0, "val": 0, "dst_train": str(dst_train), "dst_val": str(dst_val)})
+        return
 
-    files_a = sorted((src / "view_A").glob("*.png"))
-    files_c = sorted((src / "view_C").glob("*.png"))
-    assert [f.name for f in files_a] == [f.name for f in files_c], "A/C pairs must match"
-
-    n = len(files_a)
     n_val = max(1, int(round(n * a.val_ratio)))
     n_train = n - n_val
+    train_items = items[:n_train]
+    val_items = items[n_train:]
 
-    # First N_train for train, rest for val
-    train_names = [f.name for f in files_a[:n_train]]
-    val_names = [f.name for f in files_a[n_train:]]
+    def copy_items(pairs, dst_base: Path):
+        for task_rel, name in pairs:
+            ensure_dirs(dst_base, task_rel if task_rel else None)
+            src_a, src_c = resolve(task_rel, name)
+            if task_rel:
+                dst_a = dst_base / task_rel / "view_A" / name
+                dst_c = dst_base / task_rel / "view_C" / name
+            else:
+                dst_a = dst_base / "view_A" / name
+                dst_c = dst_base / "view_C" / name
+            shutil.copy2(src_a, dst_a)
+            shutil.copy2(src_c, dst_c)
 
-    def copy_pairs(names, dst_base: Path):
-        for name in names:
-            shutil.copy2(src / "view_A" / name, dst_base / "view_A" / name)
-            shutil.copy2(src / "view_C" / name, dst_base / "view_C" / name)
-
-    copy_pairs(train_names, dst_train)
-    copy_pairs(val_names, dst_val)
+    copy_items(train_items, dst_train)
+    copy_items(val_items, dst_val)
 
     print({
         "total": n,
-        "train": len(train_names),
-        "val": len(val_names),
+        "train": len(train_items),
+        "val": len(val_items),
         "dst_train": str(dst_train),
         "dst_val": str(dst_val),
     })
