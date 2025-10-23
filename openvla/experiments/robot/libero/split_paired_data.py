@@ -40,13 +40,9 @@ def parse_args():
     return p.parse_args()
 
 
-def ensure_dirs(base: Path, task_rel: str | None = None):
-    if task_rel:
-        (base / task_rel / "view_A").mkdir(parents=True, exist_ok=True)
-        (base / task_rel / "view_C").mkdir(parents=True, exist_ok=True)
-    else:
-        (base / "view_A").mkdir(parents=True, exist_ok=True)
-        (base / "view_C").mkdir(parents=True, exist_ok=True)
+def ensure_flat_dirs(base: Path) -> None:
+    (base / "view_A").mkdir(parents=True, exist_ok=True)
+    (base / "view_C").mkdir(parents=True, exist_ok=True)
 
 
 def list_pairs(src: Path):
@@ -96,6 +92,10 @@ def main():
     dst_train = Path(a.dst_train)
     dst_val = Path(a.dst_val)
 
+    # Always flatten outputs
+    ensure_flat_dirs(dst_train)
+    ensure_flat_dirs(dst_val)
+
     items, resolve = list_pairs(src)
     n = len(items)
     if n == 0:
@@ -109,14 +109,12 @@ def main():
 
     def copy_items(pairs, dst_base: Path):
         for task_rel, name in pairs:
-            ensure_dirs(dst_base, task_rel if task_rel else None)
+            # Flatten naming: prefix task_rel to avoid collisions
+            prefix = (task_rel + "__") if task_rel else ""
+            out_name = prefix + name
             src_a, src_c = resolve(task_rel, name)
-            if task_rel:
-                dst_a = dst_base / task_rel / "view_A" / name
-                dst_c = dst_base / task_rel / "view_C" / name
-            else:
-                dst_a = dst_base / "view_A" / name
-                dst_c = dst_base / "view_C" / name
+            dst_a = dst_base / "view_A" / out_name
+            dst_c = dst_base / "view_C" / out_name
             shutil.copy2(src_a, dst_a)
             shutil.copy2(src_c, dst_c)
 
