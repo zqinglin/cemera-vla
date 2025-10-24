@@ -244,6 +244,8 @@ def main(cfg: TrainConfig) -> None:
     for epoch in range(cfg.epochs):
         adapter.train()
         running = 0.0
+        epoch_loss_sum = 0.0
+        epoch_batches = 0
         for batch_idx, (img_a, img_c) in enumerate(loader):
             img_a = img_a.to(device)
             img_c = img_c.to(device)
@@ -285,6 +287,8 @@ def main(cfg: TrainConfig) -> None:
             optimizer_G.step()
 
             running += loss.item()
+            epoch_loss_sum += loss.item()
+            epoch_batches += 1
             global_step += 1
 
             if (batch_idx + 1) % 50 == 0:
@@ -292,19 +296,11 @@ def main(cfg: TrainConfig) -> None:
                 print(f"epoch {epoch+1} step {batch_idx+1} loss {avg:.6f}")
                 running = 0.0
 
-        # Save latest each epoch
-        latest_path = Path(cfg.out_dir) / "adapter_latest.pth"
-        torch.save(adapter.state_dict(), latest_path)
-        print(f"Saved latest adapter to {latest_path}")
+        # Compute epoch train avg
+        epoch_train_avg = epoch_loss_sum / max(1, epoch_batches)
 
-        # Track best epoch avg (optional, here reuse last 50-window avg if available)
-        if avg < best_loss:
-            best_loss = avg
-            best_path = Path(cfg.out_dir) / "adapter_best.pth"
-            torch.save(adapter.state_dict(), best_path)
-            print(f"Saved best adapter to {best_path}")
-
-        # Validation pass
+        # Validation pass (compute before best model selection)
+        val_avg = None
         if val_loader is not None:
             adapter.eval()
             val_running, val_count = 0.0, 0
@@ -320,6 +316,19 @@ def main(cfg: TrainConfig) -> None:
                     val_count += 1
             val_avg = val_running / max(1, val_count)
             print(f"epoch {epoch+1} val_loss {val_avg:.6f}")
+
+        # Save latest each epoch
+        latest_path = Path(cfg.out_dir) / "adapter_latest.pth"
+        torch.save(adapter.state_dict(), latest_path)
+        print(f"Saved latest adapter to {latest_path}")
+
+        # Best model selection: prefer validation loss if available, else train epoch avg
+        metric = val_avg if val_avg is not None else epoch_train_avg
+        if metric < best_loss:
+            best_loss = metric
+            best_path = Path(cfg.out_dir) / "adapter_best.pth"
+            torch.save(adapter.state_dict(), best_path)
+            print(f"Saved best adapter to {best_path} (metric={best_loss:.6f})")
 
     # Final save
     final_path = Path(cfg.out_dir) / "adapter_final.pth"
